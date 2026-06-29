@@ -22,7 +22,8 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import { addDays, addMonths, format, subDays } from "date-fns";
+import { addMonths, format } from "date-fns";
+import { useAlunos } from "@/contexts/alunos-context";
 import { Plus, Download, UserX, X } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/layout";
@@ -39,142 +40,11 @@ import {
   Aluno,
   FiltrosAluno,
   NovoAlunoData,
-  PLANOS_CONFIG,
 } from "@/types/aluno";
 
-// ============ DADOS MOCK ============
-// TODO: Substituir por chamadas à API
-
-/** Data ISO relativa a hoje — mantém o mock realista em qualquer época. */
-const diasAFrente = (dias: number) => format(addDays(new Date(), dias), "yyyy-MM-dd");
-const diasAtras = (dias: number) => format(subDays(new Date(), dias), "yyyy-MM-dd");
-
-/**
- * Dados mock de alunos para desenvolvimento.
- * Em produção, buscar via API com paginação server-side.
- */
-const MOCK_ALUNOS: Aluno[] = [
-  {
-    id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-    nome: "João Silva",
-    email: "joao.silva@email.com",
-    telefone: "(11) 99999-1111",
-    dataMatricula: diasAtras(240),
-    plano: "Mensal",
-    status: "ativo",
-    proximoVencimento: diasAFrente(3),
-    personalId: "p1",
-    personalNome: "Carlos Trainer",
-  },
-  {
-    id: "b2c3d4e5-f6a7-8901-bcde-f23456789012",
-    nome: "Maria Santos",
-    email: "maria.santos@email.com",
-    telefone: "(11) 99999-2222",
-    dataMatricula: diasAtras(170),
-    plano: "Trimestral",
-    status: "ativo",
-    proximoVencimento: diasAFrente(37),
-    personalId: null,
-    personalNome: null,
-  },
-  {
-    id: "c3d4e5f6-a7b8-9012-cdef-345678901234",
-    nome: "Pedro Oliveira",
-    email: "pedro.oliveira@email.com",
-    telefone: "(11) 99999-3333",
-    dataMatricula: diasAtras(400),
-    plano: "Anual",
-    status: "ativo",
-    proximoVencimento: diasAFrente(180),
-    personalId: "p2",
-    personalNome: "Ana Personal",
-  },
-  {
-    id: "d4e5f6a7-b8c9-0123-defa-456789012345",
-    nome: "Ana Costa",
-    email: "ana.costa@email.com",
-    telefone: "(11) 99999-4444",
-    dataMatricula: diasAtras(300),
-    plano: "Mensal",
-    status: "inadimplente",
-    proximoVencimento: diasAtras(38),
-    personalId: null,
-    personalNome: null,
-  },
-  {
-    id: "e5f6a7b8-c9d0-1234-efab-567890123456",
-    nome: "Carlos Ferreira",
-    email: "carlos.ferreira@email.com",
-    telefone: "(11) 99999-5555",
-    dataMatricula: diasAtras(150),
-    plano: "Semestral",
-    status: "ativo",
-    proximoVencimento: diasAFrente(140),
-    personalId: "p1",
-    personalNome: "Carlos Trainer",
-  },
-  {
-    id: "f6a7b8c9-d0e1-2345-fabc-678901234567",
-    nome: "Juliana Lima",
-    email: "juliana.lima@email.com",
-    telefone: "(11) 99999-6666",
-    dataMatricula: diasAtras(500),
-    plano: "Anual",
-    status: "suspenso",
-    proximoVencimento: diasAFrente(90),
-    personalId: "p2",
-    personalNome: "Ana Personal",
-  },
-  {
-    id: "a7b8c9d0-e1f2-3456-abcd-789012345678",
-    nome: "Roberto Almeida",
-    email: "roberto.almeida@email.com",
-    telefone: "(11) 99999-7777",
-    dataMatricula: diasAtras(120),
-    plano: "Mensal",
-    status: "ativo",
-    proximoVencimento: diasAFrente(2),
-    personalId: null,
-    personalNome: null,
-  },
-  {
-    id: "b8c9d0e1-f2a3-4567-bcde-890123456789",
-    nome: "Fernanda Souza",
-    email: "fernanda.souza@email.com",
-    telefone: "(11) 99999-8888",
-    dataMatricula: diasAtras(280),
-    plano: "Trimestral",
-    status: "ativo",
-    proximoVencimento: diasAFrente(26),
-    personalId: "p1",
-    personalNome: "Carlos Trainer",
-  },
-  {
-    id: "c9d0e1f2-a3b4-5678-cdef-901234567890",
-    nome: "Lucas Martins",
-    email: "lucas.martins@email.com",
-    telefone: "(11) 99999-9999",
-    dataMatricula: diasAtras(420),
-    plano: "Mensal",
-    status: "cancelado",
-    proximoVencimento: diasAtras(52),
-    personalId: null,
-    personalNome: null,
-  },
-  {
-    id: "d0e1f2a3-b4c5-6789-defa-012345678901",
-    nome: "Beatriz Rocha",
-    email: "beatriz.rocha@email.com",
-    telefone: "(11) 98888-0000",
-    dataMatricula: diasAtras(60),
-    plano: "Semestral",
-    status: "ativo",
-    proximoVencimento: diasAFrente(120),
-    personalId: "p2",
-    personalNome: "Ana Personal",
-  },
-];
+// ============ DADOS ============
+// Os dados mock agora vivem em AlunosContext (contexts/alunos-context.tsx)
+// e são compartilhados com o módulo Financeiro.
 
 /**
  * Lista mock de personais para filtros e cadastro.
@@ -236,8 +106,8 @@ function exportarCSV(alunos: Aluno[]) {
 export default function AlunosPage() {
   // ============ ESTADOS ============
 
-  // Lista de alunos (estado local enquanto não há API)
-  const [alunos, setAlunos] = useState<Aluno[]>(MOCK_ALUNOS);
+  // Lista de alunos vinda do contexto global (compartilhada com o Financeiro)
+  const { alunos, setAlunos } = useAlunos();
 
   // Estado de loading/erro (simula chamada à API)
   const [isLoading, setIsLoading] = useState(false);
@@ -280,11 +150,6 @@ export default function AlunosPage() {
       // Filtro de status (múltiplos)
       if (filtros.status && filtros.status.length > 0) {
         if (!filtros.status.includes(aluno.status)) return false;
-      }
-
-      // Filtro de plano
-      if (filtros.plano && aluno.plano !== filtros.plano) {
-        return false;
       }
 
       // Filtro de personal
@@ -395,6 +260,7 @@ export default function AlunosPage() {
 
   /**
    * Salva novo aluno — entra no topo da lista.
+   * Registra método de pagamento e aplica mensalidade padrão.
    * TODO: Chamar API POST /alunos.
    */
   const handleSaveNovoAluno = useCallback(async (data: NovoAlunoData) => {
@@ -402,18 +268,18 @@ export default function AlunosPage() {
     await new Promise((resolve) => setTimeout(resolve, 800));
 
     const personal = MOCK_PERSONAIS.find((p) => p.id === data.personalId);
+    // Próximo vencimento: 1 mês após o início (mensalidade padrão)
     const vencimento = addMonths(
       new Date(`${data.dataInicio}T12:00:00`),
-      PLANOS_CONFIG[data.plano].meses
+      1
     );
 
     const novoAluno: Aluno = {
       id: crypto.randomUUID(),
       nome: data.nome,
       email: data.email,
-      telefone: data.telefone,
+      telefone: data.telefone || "",
       dataMatricula: data.dataInicio,
-      plano: data.plano,
       status: "ativo",
       proximoVencimento: format(vencimento, "yyyy-MM-dd"),
       personalId: data.personalId ?? null,
@@ -422,12 +288,8 @@ export default function AlunosPage() {
 
     setAlunos((prev) => [novoAluno, ...prev]);
     setPaginaAtual(1);
-    toast.success(`${data.nome} matriculado(a) com sucesso!`, {
-      description: `Plano ${data.plano} — primeiro vencimento em ${format(
-        vencimento,
-        "dd/MM/yyyy"
-      )}.`,
-    });
+
+    toast.success(`${data.nome} matriculado(a) com sucesso!`);
   }, []);
 
   // ============ RENDER ============
@@ -490,23 +352,23 @@ export default function AlunosPage() {
 
       {/* ============ BARRA DE AÇÕES EM LOTE ============ */}
       {selectedIds.length > 0 && (
-        <div className="rise fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full border bg-card py-2 pl-4 pr-2 shadow-lg">
+        <div className="rise fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 sm:gap-2 rounded-full border bg-card py-2 pl-3 sm:pl-4 pr-2 shadow-lg">
           <span className="whitespace-nowrap text-sm font-medium tabular-nums">
-            {selectedIds.length} selecionado(s)
+            {selectedIds.length} <span className="hidden sm:inline">selecionado(s)</span>
           </span>
           <span className="h-5 w-px bg-border" aria-hidden />
-          <Button variant="ghost" size="sm" onClick={handleExportarCSV}>
-            <Download className="mr-1.5 h-4 w-4" />
-            Exportar CSV
+          <Button variant="ghost" size="sm" onClick={handleExportarCSV} className="px-2 sm:px-3">
+            <Download className="h-4 w-4" />
+            <span className="hidden sm:inline ml-1.5">Exportar CSV</span>
           </Button>
           <Button
             variant="ghost"
             size="sm"
             onClick={handleSuspenderSelecionados}
-            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+            className="text-destructive hover:bg-destructive/10 hover:text-destructive px-2 sm:px-3"
           >
-            <UserX className="mr-1.5 h-4 w-4" />
-            Suspender
+            <UserX className="h-4 w-4" />
+            <span className="hidden sm:inline ml-1.5">Suspender</span>
           </Button>
           <Button
             variant="ghost"

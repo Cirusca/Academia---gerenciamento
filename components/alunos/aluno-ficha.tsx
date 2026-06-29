@@ -30,14 +30,14 @@ import {
   Phone,
   MapPin,
   Calendar,
-  CreditCard,
   Dumbbell,
   Eye,
   EyeOff,
   AlertTriangle,
-  CheckCircle,
-  XCircle,
-  Clock,
+  Plus,
+  ChevronDown,
+  ChevronRight,
+  Trash2,
 } from "lucide-react";
 import {
   Sheet,
@@ -52,21 +52,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { RoleGate, useHasPermission } from "@/components/auth/role-gate";
+import { FichaTreinoEditor } from "@/components/alunos/ficha-treino-editor";
 import { useAuth } from "@/contexts/auth-context";
 import { UserRole } from "@/types/auth";
 import {
   Aluno,
   AlunoDetalhes,
-  Pagamento,
   FichaTreino,
   STATUS_ALUNO_CONFIG,
 } from "@/types/aluno";
@@ -116,18 +107,102 @@ const MOCK_DETALHES: AlunoDetalhes = {
   },
 };
 
-const MOCK_PAGAMENTOS: Pagamento[] = [
-  { id: "pg1", alunoId: "1", data: "2024-01-15", valor: 150, status: "pago", metodoPagamento: "pix" },
-  { id: "pg2", alunoId: "1", data: "2023-12-15", valor: 150, status: "pago", metodoPagamento: "cartao_credito" },
-  { id: "pg3", alunoId: "1", data: "2023-11-15", valor: 150, status: "pago", metodoPagamento: "pix" },
-  { id: "pg4", alunoId: "1", data: "2023-10-15", valor: 150, status: "pago", metodoPagamento: "boleto" },
-  { id: "pg5", alunoId: "1", data: "2023-09-15", valor: 150, status: "estornado", metodoPagamento: "cartao_credito" },
-];
-
 const MOCK_FICHAS: FichaTreino[] = [
-  { id: "f1", nome: "Treino A - Superior", descricao: "Peito, Ombro e Tríceps", ativa: true, criadaEm: "2024-01-01", atualizadaEm: "2024-01-20", personalNome: "Carlos Trainer" },
-  { id: "f2", nome: "Treino B - Inferior", descricao: "Pernas e Glúteos", ativa: true, criadaEm: "2024-01-01", atualizadaEm: "2024-01-15", personalNome: "Carlos Trainer" },
-  { id: "f3", nome: "Treino C - Costas", descricao: "Costas e Bíceps", ativa: false, criadaEm: "2023-10-01", atualizadaEm: "2023-12-01", personalNome: "Ana Personal" },
+  {
+    id: "f1",
+    nome: "Treino A - Superior",
+    descricao: "Foco em peito, ombro e tríceps",
+    ativa: true,
+    criadaEm: "2024-01-01",
+    atualizadaEm: "2024-01-20",
+    personalNome: "Carlos Trainer",
+    dias: [
+      {
+        id: "d1",
+        nome: "Treino A",
+        grupos: [
+          {
+            id: "g1",
+            nome: "Peito",
+            exercicios: [
+              {
+                id: "e1",
+                nome: "Supino reto com barra",
+                series: "4",
+                repeticoes: "10",
+                carga: "40kg",
+                descanso: "60s",
+                observacoes: "Manter cotovelos a 45°",
+              },
+              {
+                id: "e2",
+                nome: "Crucifixo com halteres",
+                series: "3",
+                repeticoes: "12",
+                carga: "12kg",
+                descanso: "45s",
+              },
+            ],
+          },
+          {
+            id: "g2",
+            nome: "Tríceps",
+            exercicios: [
+              {
+                id: "e3",
+                nome: "Tríceps corda",
+                series: "3",
+                repeticoes: "12",
+                carga: "20kg",
+                descanso: "45s",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "f2",
+    nome: "Treino B - Inferior",
+    descricao: "Pernas e glúteos",
+    ativa: true,
+    criadaEm: "2024-01-01",
+    atualizadaEm: "2024-01-15",
+    personalNome: "Carlos Trainer",
+    dias: [
+      {
+        id: "d2",
+        nome: "Treino B",
+        grupos: [
+          {
+            id: "g3",
+            nome: "Pernas",
+            exercicios: [
+              {
+                id: "e4",
+                nome: "Leg press",
+                series: "4",
+                repeticoes: "12",
+                carga: "120kg",
+                descanso: "90s",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "f3",
+    nome: "Treino C - Costas",
+    descricao: "Costas e bíceps",
+    ativa: false,
+    criadaEm: "2023-10-01",
+    atualizadaEm: "2023-12-01",
+    personalNome: "Ana Personal",
+    dias: [],
+  },
 ];
 
 /**
@@ -135,16 +210,6 @@ const MOCK_FICHAS: FichaTreino[] = [
  */
 function formatDate(data: string): string {
   return format(parseISO(data), "dd/MM/yyyy", { locale: ptBR });
-}
-
-/**
- * Formata valor monetário.
- */
-function formatCurrency(valor: number): string {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(valor);
 }
 
 /**
@@ -166,51 +231,48 @@ function getInitials(nome: string): string {
     .toUpperCase();
 }
 
-/**
- * Ícone e cor do status de pagamento.
- */
-function getStatusPagamentoConfig(status: Pagamento["status"]) {
-  switch (status) {
-    case "pago":
-      return { icon: CheckCircle, className: "text-emerald-600" };
-    case "pendente":
-      return { icon: Clock, className: "text-amber-600" };
-    case "cancelado":
-    case "estornado":
-      return { icon: XCircle, className: "text-red-600" };
-  }
-}
-
-/**
- * Label do método de pagamento.
- */
-function getMetodoPagamentoLabel(metodo: Pagamento["metodoPagamento"]): string {
-  const labels: Record<Pagamento["metodoPagamento"], string> = {
-    pix: "PIX",
-    cartao_credito: "Cartão de Crédito",
-    cartao_debito: "Cartão de Débito",
-    dinheiro: "Dinheiro",
-    boleto: "Boleto",
-  };
-  return labels[metodo];
-}
 
 export function AlunoFicha({ aluno, open, onOpenChange }: AlunoFichaProps) {
   const { user } = useAuth();
   const [showCPF, setShowCPF] = useState(false);
-  const canAccessFinance = useHasPermission(60);
+  const [fichas, setFichas] = useState<FichaTreino[]>(MOCK_FICHAS);
+  const [fichaAbertaId, setFichaAbertaId] = useState<string | null>(null);
 
   // Usa dados mock enquanto API não está implementada
   // TODO: Buscar detalhes completos via API quando aluno mudar
   const detalhes = MOCK_DETALHES;
-  const pagamentos = MOCK_PAGAMENTOS;
-  const fichas = MOCK_FICHAS;
 
   // Verifica se usuário é admin para ver CPF completo
   const isAdmin = user?.role === UserRole.ADMIN;
   const podeVerCPF = isAdmin && showCPF;
 
   if (!aluno) return null;
+
+  function atualizarFicha(fichaAtualizada: FichaTreino) {
+    setFichas((prev) =>
+      prev.map((f) => (f.id === fichaAtualizada.id ? fichaAtualizada : f))
+    );
+  }
+
+  function adicionarFicha() {
+    const novaFicha: FichaTreino = {
+      id: `f-${Date.now()}`,
+      nome: "Nova Ficha de Treino",
+      descricao: "",
+      ativa: true,
+      criadaEm: new Date().toISOString().slice(0, 10),
+      atualizadaEm: new Date().toISOString().slice(0, 10),
+      personalNome: aluno?.personalNome ?? undefined,
+      dias: [],
+    };
+    setFichas((prev) => [...prev, novaFicha]);
+    setFichaAbertaId(novaFicha.id);
+  }
+
+  function excluirFicha(fichaId: string) {
+    setFichas((prev) => prev.filter((f) => f.id !== fichaId));
+    if (fichaAbertaId === fichaId) setFichaAbertaId(null);
+  }
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -232,8 +294,6 @@ export function AlunoFicha({ aluno, open, onOpenChange }: AlunoFichaProps) {
                 >
                   {STATUS_ALUNO_CONFIG[aluno.status].label}
                 </Badge>
-                <span className="text-muted-foreground">•</span>
-                <span>{aluno.plano}</span>
               </SheetDescription>
             </div>
           </div>
@@ -242,12 +302,8 @@ export function AlunoFicha({ aluno, open, onOpenChange }: AlunoFichaProps) {
         {/* ============ ABAS ============ */}
         {/* px-6: alinha o conteúdo das abas com o padding do header */}
         <Tabs defaultValue="dados" className="px-6 pb-8">
-          <TabsList className={`w-full grid ${canAccessFinance ? "grid-cols-3" : "grid-cols-2"}`}>
+          <TabsList className="w-full grid grid-cols-2">
             <TabsTrigger value="dados">Dados Pessoais</TabsTrigger>
-            {/* Aba Financeiro só aparece para gerente+ */}
-            <RoleGate minLevel={60} fallback={null}>
-              <TabsTrigger value="financeiro">Financeiro</TabsTrigger>
-            </RoleGate>
             <TabsTrigger value="treinos">Treinos</TabsTrigger>
           </TabsList>
 
@@ -358,76 +414,6 @@ export function AlunoFicha({ aluno, open, onOpenChange }: AlunoFichaProps) {
             )}
           </TabsContent>
 
-          {/* ============ ABA: FINANCEIRO (GERENTE+) ============ */}
-          <TabsContent value="financeiro" className="space-y-6 mt-6">
-            {/* Resumo do plano */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <CreditCard className="h-4 w-4" />
-                  Plano Atual
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-muted-foreground">Tipo</p>
-                  <p className="font-medium">{aluno.plano}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Valor</p>
-                  <p className="font-medium">{formatCurrency(150)}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Início</p>
-                  <p className="font-medium">{formatDate(aluno.dataMatricula)}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Próx. Vencimento</p>
-                  <p className="font-medium">{formatDate(aluno.proximoVencimento)}</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Histórico de pagamentos */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-medium text-muted-foreground">
-                Histórico de Pagamentos
-              </h3>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Data</TableHead>
-                    <TableHead>Valor</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Método</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pagamentos.map((pagamento) => {
-                    const statusConfig = getStatusPagamentoConfig(pagamento.status);
-                    const StatusIcon = statusConfig.icon;
-                    
-                    return (
-                      <TableRow key={pagamento.id}>
-                        <TableCell>{formatDate(pagamento.data)}</TableCell>
-                        <TableCell>{formatCurrency(pagamento.valor)}</TableCell>
-                        <TableCell>
-                          <div className={`flex items-center gap-1.5 ${statusConfig.className}`}>
-                            <StatusIcon className="h-4 w-4" />
-                            <span className="capitalize">{pagamento.status}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {getMetodoPagamentoLabel(pagamento.metodoPagamento)}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          </TabsContent>
-
           {/* ============ ABA: TREINOS ============ */}
           <TabsContent value="treinos" className="space-y-6 mt-6">
             {/* Personal responsável */}
@@ -447,49 +433,89 @@ export function AlunoFicha({ aluno, open, onOpenChange }: AlunoFichaProps) {
 
             {/* Fichas de treino */}
             <div className="space-y-4">
-              <h3 className="text-sm font-medium text-muted-foreground">
-                Fichas de Treino
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium text-muted-foreground">
+                  Fichas de Treino
+                </h3>
+                <Button size="sm" variant="outline" onClick={adicionarFicha}>
+                  <Plus className="h-4 w-4 mr-1.5" />
+                  Nova ficha
+                </Button>
+              </div>
               <div className="grid gap-3">
-                {fichas.map((ficha) => (
-                  <Card
-                    key={ficha.id}
-                    className={ficha.ativa ? "" : "opacity-60"}
-                  >
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-start gap-3">
-                          <div className="p-2 bg-primary/10 rounded-md">
-                            <Dumbbell className="h-4 w-4 text-primary" />
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <p className="font-medium">{ficha.nome}</p>
-                              {ficha.ativa ? (
-                                <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-600">
-                                  Ativa
-                                </Badge>
-                              ) : (
-                                <Badge variant="secondary">Inativa</Badge>
-                              )}
+                {fichas.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhuma ficha de treino cadastrada.
+                  </p>
+                )}
+                {fichas.map((ficha) => {
+                  const aberta = fichaAbertaId === ficha.id;
+                  return (
+                    <Card key={ficha.id} className={ficha.ativa ? "" : "opacity-60"}>
+                      <CardContent className="p-4 space-y-4">
+                        <div className="flex items-start justify-between gap-2">
+                          <button
+                            type="button"
+                            className="flex items-start gap-3 text-left flex-1 min-w-0"
+                            onClick={() => setFichaAbertaId(aberta ? null : ficha.id)}
+                          >
+                            <div className="p-2 bg-primary/10 rounded-md">
+                              <Dumbbell className="h-4 w-4 text-primary" />
                             </div>
-                            {ficha.descricao && (
-                              <p className="text-sm text-muted-foreground mt-0.5">
-                                {ficha.descricao}
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium truncate">{ficha.nome}</p>
+                                {ficha.ativa ? (
+                                  <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-600">
+                                    Ativa
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="secondary">Inativa</Badge>
+                                )}
+                              </div>
+                              {ficha.descricao && (
+                                <p className="text-sm text-muted-foreground mt-0.5">
+                                  {ficha.descricao}
+                                </p>
+                              )}
+                              <p className="text-xs text-muted-foreground mt-2">
+                                Atualizada em {formatDate(ficha.atualizadaEm)}
+                                {ficha.personalNome && ` • ${ficha.personalNome}`}
                               </p>
+                            </div>
+                          </button>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {aberta ? (
+                              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4 text-muted-foreground" />
                             )}
-                            <p className="text-xs text-muted-foreground mt-2">
-                              Atualizada em {formatDate(ficha.atualizadaEm)}
-                              {ficha.personalNome && ` • ${ficha.personalNome}`}
-                            </p>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="text-muted-foreground hover:text-destructive"
+                              onClick={() => excluirFicha(ficha.id)}
+                              aria-label="Excluir ficha de treino"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </div>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+
+                        {aberta && (
+                          <FichaTreinoEditor
+                            ficha={ficha}
+                            nomeAluno={aluno.nome}
+                            onChange={atualizarFicha}
+                          />
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             </div>
+
 
             {/* Último check-in */}
             <div className="p-4 bg-muted/50 rounded-lg">

@@ -21,9 +21,14 @@ export type StatusAluno = "ativo" | "inadimplente" | "suspenso" | "cancelado";
 
 /**
  * Tipos de plano disponíveis.
- * TIP: Para adicionar novos planos, adicione aqui e em PLANOS_CONFIG.
+ * @deprecated Sistema migrado para mensalidade única. Mantido para compatibilidade com dados históricos.
  */
 export type TipoPlano = "Mensal" | "Trimestral" | "Semestral" | "Anual";
+
+/**
+ * Formas de pagamento disponíveis no cadastro de alunos.
+ */
+export type MetodoPagamentoCadastro = "pix" | "dinheiro";
 
 /**
  * Interface principal do Aluno.
@@ -42,8 +47,8 @@ export interface Aluno {
   telefone: string;
   /** Data da matrícula em formato ISO (YYYY-MM-DD) */
   dataMatricula: string;
-  /** Tipo do plano atual */
-  plano: TipoPlano;
+  /** @deprecated Planos múltiplos removidos. Campo mantido para dados históricos. */
+  plano?: TipoPlano;
   /** Status atual do aluno */
   status: StatusAluno;
   /** Data do próximo vencimento em formato ISO */
@@ -99,7 +104,45 @@ export interface Pagamento {
 }
 
 /**
+ * Exercício dentro de um grupo muscular.
+ * Todos os campos são editáveis e de texto livre.
+ */
+export interface ExercicioTreino {
+  id: string;
+  nome: string;
+  series: string;
+  repeticoes: string;
+  carga: string;
+  descanso: string;
+  observacoes?: string;
+}
+
+/**
+ * Grupo muscular dentro de um dia de treino.
+ * Nome livre, definido pelo personal (sem opções fixas).
+ */
+export interface GrupoMuscularTreino {
+  id: string;
+  nome: string;
+  exercicios: ExercicioTreino[];
+}
+
+/**
+ * Dia/Treino dentro da ficha.
+ * Nome livre, definido pelo personal (sem opções fixas).
+ */
+export interface DiaTreino {
+  id: string;
+  nome: string;
+  grupos: GrupoMuscularTreino[];
+}
+
+/**
  * Ficha de treino do aluno.
+ * Totalmente personalizada pelo personal: sem categorias, divisões
+ * ou modelos pré-definidos.
+ *
+ * Hierarquia: Ficha de Treino -> Dia/Treino -> Grupo Muscular -> Exercícios
  */
 export interface FichaTreino {
   id: string;
@@ -110,6 +153,7 @@ export interface FichaTreino {
   atualizadaEm: string;
   personalId?: string;
   personalNome?: string;
+  dias: DiaTreino[];
 }
 
 /**
@@ -144,6 +188,7 @@ export const STATUS_ALUNO_CONFIG: Record<
 
 /**
  * Configuração dos planos disponíveis.
+ * @deprecated Mantido para compatibilidade com dados históricos. Novos alunos usam mensalidade única.
  */
 export const PLANOS_CONFIG: Record<TipoPlano, { label: string; meses: number }> = {
   Mensal: { label: "Mensal", meses: 1 },
@@ -151,6 +196,15 @@ export const PLANOS_CONFIG: Record<TipoPlano, { label: string; meses: number }> 
   Semestral: { label: "Semestral", meses: 6 },
   Anual: { label: "Anual", meses: 12 },
 };
+
+/**
+ * Mensalidade padrão única do sistema.
+ * Primeiro mês: R$ 50,00 — a partir do segundo mês: R$ 65,00/mês.
+ */
+export const MENSALIDADE_PADRAO = {
+  primeiroMes: 50.0,
+  mensalRecorrente: 65.0,
+} as const;
 
 /**
  * Parâmetros de filtro para listagem de alunos.
@@ -161,30 +215,30 @@ export interface FiltrosAluno {
   busca?: string;
   /** Filtrar por status (múltiplos) */
   status?: StatusAluno[];
-  /** Filtrar por plano */
-  plano?: TipoPlano;
   /** Filtrar por personal */
   personalId?: string;
 }
 
 /**
  * Dados para criação de novo aluno (wizard passo 1).
+ * Campos obrigatórios: nome, email e data de nascimento.
+ * Campos opcionais: telefone, cpf.
  */
 export interface NovoAlunoDadosBasicos {
   nome: string;
   email: string;
-  telefone: string;
-  cpf: string;
   dataNascimento: string;
-  endereco: AlunoDetalhes["endereco"];
+  telefone?: string;
+  cpf?: string;
 }
 
 /**
- * Dados do plano para criação de novo aluno (wizard passo 2).
+ * Dados de pagamento para criação de novo aluno (wizard passo 2).
+ * O sistema usa mensalidade única: R$50 no 1º mês, R$65 a partir do 2º.
  */
 export interface NovoAlunoPlano {
-  plano: TipoPlano;
   dataInicio: string;
+  metodoPagamento: MetodoPagamentoCadastro;
   personalId?: string;
   observacoesMedicas?: string;
 }
@@ -193,3 +247,96 @@ export interface NovoAlunoPlano {
  * Interface completa para criação de aluno.
  */
 export interface NovoAlunoData extends NovoAlunoDadosBasicos, NovoAlunoPlano {}
+
+/**
+ * ============================================================================
+ * REGRA AUTOMÁTICA DE STATUS (ATIVO <-> INADIMPLENTE)
+ * ============================================================================
+ *
+ * Regra:
+ * - Se (hoje - proximoVencimento) > 30 dias  => status = "inadimplente"
+ * - Quando um novo pagamento é registrado (proximoVencimento é atualizado
+ *   para uma data futura), o status volta automaticamente para "ativo"
+ *
+ * IMPORTANTE: a regra automática só transita entre "ativo" e "inadimplente".
+ * Status definidos manualmente ("suspenso" e "cancelado") são preservados,
+ * pois representam decisões administrativas e não devem ser sobrescritos
+ * pela regra de inadimplência.
+ */
+
+/** Quantidade de dias de atraso a partir da qual o aluno é considerado inadimplente. */
+export const DIAS_LIMITE_INADIMPLENCIA = 30;
+
+/**
+ * Calcula o status automático de um aluno com base na data de
+ * próximo vencimento, preservando status administrativos manuais
+ * ("suspenso" e "cancelado").
+ *
+ * @param aluno Aluno (ou dados parciais) com `status` e `proximoVencimento`.
+ * @param referencia Data de referência para o cálculo (padrão: agora).
+ * @returns O status recalculado do aluno.
+ */
+export function calcularStatusAluno(
+  aluno: Pick<Aluno, "status" | "proximoVencimento">,
+  referencia: Date = new Date()
+): StatusAluno {
+  // Status administrativos manuais não são alterados pela regra automática.
+  if (aluno.status === "suspenso" || aluno.status === "cancelado") {
+    return aluno.status;
+  }
+
+  const vencimento = new Date(`${aluno.proximoVencimento}T00:00:00`);
+  const diffDias = Math.floor(
+    (referencia.getTime() - vencimento.getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  return diffDias > DIAS_LIMITE_INADIMPLENCIA ? "inadimplente" : "ativo";
+}
+
+/**
+ * Aplica `calcularStatusAluno` a uma lista de alunos, retornando uma nova
+ * lista com os status atualizados automaticamente.
+ *
+ * Use ao carregar/recarregar a lista de alunos para garantir que o status
+ * reflita a regra de inadimplência sem intervenção manual.
+ *
+ * @param alunos Lista de alunos a recalcular.
+ * @param referencia Data de referência para o cálculo (padrão: agora).
+ */
+export function recalcularStatusAlunos<T extends Pick<Aluno, "status" | "proximoVencimento">>(
+  alunos: T[],
+  referencia: Date = new Date()
+): T[] {
+  return alunos.map((aluno) => {
+    const novoStatus = calcularStatusAluno(aluno, referencia);
+    return novoStatus === aluno.status ? aluno : { ...aluno, status: novoStatus };
+  });
+}
+
+/**
+ * Registra um pagamento para o aluno: avança o próximo vencimento em 1 mês
+ * a partir de hoje e marca o status como "ativo" automaticamente.
+ *
+ * Não altera alunos com status "suspenso" ou "cancelado" — nesses casos,
+ * a reativação deve ser feita manualmente antes do registro do pagamento.
+ *
+ * @param aluno Aluno que recebeu o pagamento.
+ * @param dataPagamento Data em que o pagamento foi registrado (padrão: hoje).
+ */
+export function registrarPagamentoAluno<T extends Pick<Aluno, "status" | "proximoVencimento">>(
+  aluno: T,
+  dataPagamento: Date = new Date()
+): T {
+  if (aluno.status === "suspenso" || aluno.status === "cancelado") {
+    return aluno;
+  }
+
+  const novoVencimento = new Date(dataPagamento);
+  novoVencimento.setMonth(novoVencimento.getMonth() + 1);
+
+  return {
+    ...aluno,
+    proximoVencimento: novoVencimento.toISOString().slice(0, 10),
+    status: "ativo",
+  };
+}
